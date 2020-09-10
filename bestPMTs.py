@@ -1,31 +1,39 @@
 import pandas as pd
-import map_to_hole
+from show_table import *
 
-def best_N_livetime(pmt_info='livetime_run_channelsHoleLabel.csv', N=1000):
-    ''' obtain top N PMTs by livetime '''
 
-    ## get total livetime of each PMT
-    # information of livetime of each PMT in each run
-    table = pd.read_csv(pmt_info)
-    # get rid of channel info (don't need anymore)
-    table = table.drop('ChannelID', axis=1)
-    pmt_lt = table.groupby('HoleLabel').sum()
+class PMTs():
+    def __init__(self, table_enpmts):
+        # channels that are not mapped to any PMT were marked as HoleLabel 0
+        self.table_enpmts = table_enpmts[table_enpmts['HoleLabel'] != 0]
 
-    ## select top N
-    pmt_lt = pmt_lt.sort_values('Livetime', ascending=False)
-    pmt_lt = pmt_lt.iloc[:N]
+    def best_N_livetime(self,table_lt,N):
+        ''' obtain top N PMTs by livetime '''
+        ## get livetime info
+        self.table_enpmts['Livetime'] = self.table_enpmts.RunNumber.map(dict(zip(table_lt.index, table_lt['Livetime'])))
 
-    ## add relative livetime info
-    # total livetime
-    table_lt = pd.read_csv('livetime_run.csv')
-    lt_tot = table_lt.sum()['Livetime']
-    pmt_lt['LivetimeRelative'] = pmt_lt['Livetime'] / lt_tot
+        ## get total livetime of each PMT
+        # information of livetime of each PMT in each run
+        # get rid of channel info (don't need anymore)
+        self.table_enpmts = self.table_enpmts.drop('ChannelID', axis=1)
+        # livetime of each pmt
+        self.pmt_lt = self.table_enpmts.groupby('HoleLabel').sum()[['Livetime']]
 
-    ## save
-    outname = 'top{0}pmts_livetime.csv'.format(N)
-    print '-->', outname
-    pmt_lt.to_csv(outname, index=True)
-    return outname
+        ## select top N
+        self.pmt_lt = self.pmt_lt.sort_values('Livetime', ascending=False)
+        self.pmt_lt = self.pmt_lt.iloc[:N]
+
+        ## add relative livetime info
+        # total livetime
+        lt_tot = table_lt.sum()['Livetime']
+        self.pmt_lt['LivetimeRelative'] = self.pmt_lt['Livetime'] / lt_tot
+        print self.pmt_lt
+#
+#    ## save
+#    outname = 'top{0}pmts_livetime.csv'.format(N)
+#    print '-->', outname
+#    pmt_lt.to_csv(outname, index=True)
+#    return outname
 
 
 def dark_noise_table():
