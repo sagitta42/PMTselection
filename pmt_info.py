@@ -17,30 +17,41 @@ class PMTinfo():
         ## livetime table
         # obtained from the DSTs
         # the runs in this table are the ones that will be analyzed for the PMT selection 
-        print 'Reading livetime table...'
-        ltname =  'livetime/livetime_run.csv'
-        self.table_lt = pd.read_csv(ltname)
-        self.table_lt = self.table_lt.sort_values('RunNumber')
-
-        # determine min and max runs
-        runs = self.table_lt['RunNumber']
-        run_min = rmin if rmin else runs.min()
-        run_max = rmax if rmax else runs.max()
-
-        if run_min < runs.min():
-            print 'Given rmin ({0}) out of bounds in {1} (min {2})'.format(rmin, ltname, runs.min())
-            sys.exit(1)
-        if run_max > runs.max():
-            print 'Given rmax ({0}) out of bounds in {1} (max {2})'.format(rmax, ltname, runs.max())
+        print 'Livetime...'
+        ltname =  'livetime/livetime_run{0}-{1}.csv'.format(rmin, rmax)
+        if not os.path.exists(ltname):
+            print 'Table {0} not present'.format(ltname)
+            print 'Do Step 0: obtain livetime (see pmt_selection.sh)'
             sys.exit(1)
 
-        self.table_lt = self.table_lt[self.table_lt['RunNumber'] >= run_min]
-        self.table_lt = self.table_lt[self.table_lt['RunNumber'] <= run_max]
+        print '...reading table', ltname
+        self.table_lt = pd.read_csv(ltname, sep = " ")
+        # remove runs with zero livetime
+        self.table_lt = self.table_lt[self.table_lt['Livetime'] != 0]
+#        self.table_lt = self.table_lt.sort_values('RunNumber')
+        self.table_lt = self.table_lt[self.table_lt['RunNumber'] >= rmin]
+        self.table_lt = self.table_lt[self.table_lt['RunNumber'] <= rmax]
+
         self.runs = self.table_lt['RunNumber']
-        self.run_min = self.runs.min()
-        self.run_max = self.runs.max()
-        print 'Given range: {0} - {1}'.format(rmin, rmax)
-        print 'Resulting range: {0} - {1}'.format(self.run_min, self.run_max)
+#        run_min = rmin if rmin else runs.min()
+#        run_max = rmax if rmax else runs.max()
+#
+#        if run_min < runs.min():
+#            print 'Given rmin ({0}) out of bounds in {1} (min {2})'.format(rmin, ltname, runs.min())
+#            sys.exit(1)
+#        if run_max > runs.max():
+#            print 'Given rmax ({0}) out of bounds in {1} (max {2})'.format(rmax, ltname, runs.max())
+#            sys.exit(1)
+
+#        self.table_lt = self.table_lt[self.table_lt['RunNumber'] >= run_min]
+#        self.table_lt = self.table_lt[self.table_lt['RunNumber'] <= run_max]
+#        self.runs = self.table_lt['RunNumber']
+#       self.run_min = self.runs.min()
+#        self.run_max = self.runs.max()
+        self.run_min = rmin
+        self.run_max = rmax
+#        print 'Given range: {0} - {1}'.format(rmin, rmax)
+#        print 'Resulting range: {0} - {1}'.format(self.run_min, self.run_max)
 
         self.table_lt = self.table_lt.set_index('RunNumber')
         show_table(self.table_lt)
@@ -83,6 +94,11 @@ class PMTinfo():
         print 'Collecting enabled channels in each run (will take a long while)...'
         for r in self.runs:
             if cnt % 50 == 0: print cnt, '/', nruns, 'runs'
+            # bug: run present in dst but not DisabledChannels
+            if not r in self.table_dis.index:
+                print 'Bug notice: run {0} present in DST but not in DisabledChannels'.format(r)
+                continue
+
             # remove disabled channels in this run
             dischans = self.table_dis.loc[r]
             chans = np.setdiff1d(allchans,dischans)
@@ -237,7 +253,7 @@ class PMTinfo():
         ## disabled channels
         print 'Disabled channels...'
         tname = "livetime/DisabledChannels.csv"
-        query = 'select "RunNumber", "ChannelID" from "DisabledChannels" where "Cycle" = 18 and "RunNumber" >= {0} and "RunNumber" <= {1} and "Timing" = 1 order by "RunNumber", "ChannelID"'.format(self.run_min, self.run_max)
+        query = 'select "RunNumber", "ChannelID" from "DisabledChannels" where "Cycle" = 19 and "RunNumber" >= {0} and "RunNumber" <= {1} and "Timing" = 1 order by "RunNumber", "ChannelID"'.format(self.run_min, self.run_max)
         dbname = 'bx_calib'
         # if the table already exists, it will not be read again
         self.table_dis = self.read_table(tname, query, dbname)
@@ -333,6 +349,8 @@ def profile(r):
 def show_table(table):
     print '----------------------------------'
     print table.head(10)
+#    print table.iloc[:4].to_string(header=True, index_names=True)
     print '...'
+#    print table.iloc[-6:-1].to_string(header=False, index_names=False)
 #    print table.tail(5)
     print '----------------------------------'

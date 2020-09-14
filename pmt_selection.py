@@ -1,11 +1,14 @@
 import pmt_info
+import sys
 
 ###### -----------------------------------
 
 ## range of runs for the selection of the PMT set
-run_min = 5007 # May 2007 Phase I start
-run_max = 31095 # July 2019, moment of study
+#run_min = 5007 # May 2007 Phase I start
+#run_max = 31095 # July 2019, moment of study
 #run_max = 7000 # test
+run_min = sys.argv[1]
+run_max = sys.argv[2]
 
 ## top N PMTs by livetime
 N = 1000
@@ -14,7 +17,7 @@ M = 900
 
 ###### -----------------------------------
 
-PMT_info = pmt_info.PMTinfo(run_min,run_max)
+PMT_info = pmt_info.PMTinfo(int(run_min), int(run_max))
 
 print '\n#######################################'
 print 'Step 1: Enabled channels in each run'
