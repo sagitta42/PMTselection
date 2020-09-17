@@ -12,7 +12,7 @@ def dst_list(rmin, rmax):
     # connect to database
     conn = psycopg2.connect("host='bxdb.lngs.infn.it' dbname='bx_runvalidation' user=borex_guest")
     # get ValidRuns table for given runs
-    query = "select \"RunNumber\", \"Groups\", \"RootFiles\" from \"ValidRuns\" where \"RunNumber\" = {0} or \"RunNumber\" = {1}".format(rmin, rmax)
+    query = "select \"RunNumber\", \"Groups\", \"RootFiles\" from \"ValidRuns\" where \"RunNumber\" = {0} or \"RunNumber\" = {1} order by \"RunNumber\"".format(rmin, rmax)
     table = sqlio.read_sql_query(query, conn)
     conn.close()
 
@@ -32,6 +32,10 @@ def dst_list(rmin, rmax):
     dst_years = pd.DataFrame({'path': dst_years})
     dst_years['dst'] = dst_years['path'].str.split('dst_', expand=True)[1].str.split('_c19', expand=True)[0]
     dst_years['year'] = dst_years['dst'].str.split('_', expand=True)[0]
+    # to sort chronologically
+    dst_years['date'] = pd.to_datetime(dst_years['dst'].str.replace('_', '-'))
+    dst_years = dst_years.sort_values('date')
+    dst_years = dst_years.reset_index() # purely for display
     print dst_years['dst'].iloc[:5].to_string()
     print '...'
     print dst_years['dst'].iloc[-5:-1].to_string()

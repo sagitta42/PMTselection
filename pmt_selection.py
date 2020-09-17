@@ -6,7 +6,6 @@ import sys
 ## range of runs for the selection of the PMT set
 #run_min = 5007 # May 2007 Phase I start
 #run_max = 31095 # July 2019, moment of study
-#run_max = 7000 # test
 run_min = sys.argv[1]
 run_max = sys.argv[2]
 
@@ -19,12 +18,18 @@ M = 900
 
 PMT_info = pmt_info.PMTinfo(int(run_min), int(run_max))
 
+# the following steps can be commented out to save time in case the step was done
+# be careful to comment them out in order
+# you can comment out each previous step if you are sure it was already done/updated
+# otherwise you might have clashes between updated and old info    
+
 print '\n#######################################'
 print 'Step 1: Enabled channels in each run'
 print '#######################################\n'
 
 ## [!] comment out the following line if you want to skip this step (if already done)
-PMT_info.enabled_channels()
+#PMT_info.enabled_channels()
+# be careful about this step, if it's not up to date with your current run_min and run_max, the next steps will produce wrong results or possibly crash
 ## produces file livetime/live_channels_run.csv
 
 print '\n#######################################'
@@ -53,7 +58,7 @@ PMT_info.avg_dark()
 ## produces file dark_noise/DarkNoiseAverage.csv    
 
 print '\n#######################################'
-print 'Step 4: select best PMTs by dark noise'
+print 'Step 5: select best PMTs by dark noise'
 print '#######################################\n'
 PMT_info.best_M_darknoise(N, M)
 

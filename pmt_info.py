@@ -4,14 +4,13 @@ import numpy as np
 import pandas.io.sql as sqlio
 import psycopg2
 import os
-from show_table import *
 import sys
 import map_pmts
 
 
 class PMTinfo():
     def __init__(self, rmin, rmax):
-        ''' rmin and rmax - range of runs in which the selection will be done.
+        ''' rmin and rmax - range of runs in which the selection will be done (integer).
             The specific runs themselves will be taken from the livetime table
         '''            
         ## livetime table
@@ -28,30 +27,14 @@ class PMTinfo():
         self.table_lt = pd.read_csv(ltname, sep = " ")
         # remove runs with zero livetime
         self.table_lt = self.table_lt[self.table_lt['Livetime'] != 0]
-#        self.table_lt = self.table_lt.sort_values('RunNumber')
+        self.table_lt = self.table_lt.sort_values('RunNumber')
+        # in principle this should be not needed since the table is already saved for this range
         self.table_lt = self.table_lt[self.table_lt['RunNumber'] >= rmin]
         self.table_lt = self.table_lt[self.table_lt['RunNumber'] <= rmax]
 
         self.runs = self.table_lt['RunNumber']
-#        run_min = rmin if rmin else runs.min()
-#        run_max = rmax if rmax else runs.max()
-#
-#        if run_min < runs.min():
-#            print 'Given rmin ({0}) out of bounds in {1} (min {2})'.format(rmin, ltname, runs.min())
-#            sys.exit(1)
-#        if run_max > runs.max():
-#            print 'Given rmax ({0}) out of bounds in {1} (max {2})'.format(rmax, ltname, runs.max())
-#            sys.exit(1)
-
-#        self.table_lt = self.table_lt[self.table_lt['RunNumber'] >= run_min]
-#        self.table_lt = self.table_lt[self.table_lt['RunNumber'] <= run_max]
-#        self.runs = self.table_lt['RunNumber']
-#       self.run_min = self.runs.min()
-#        self.run_max = self.runs.max()
         self.run_min = rmin
         self.run_max = rmax
-#        print 'Given range: {0} - {1}'.format(rmin, rmax)
-#        print 'Resulting range: {0} - {1}'.format(self.run_min, self.run_max)
 
         self.table_lt = self.table_lt.set_index('RunNumber')
         show_table(self.table_lt)
@@ -83,52 +66,109 @@ class PMTinfo():
         # will read saved files if exist, otherwise read from database (takes time)
         # if saved files do not cover run range, will update
         self.get_tables()
-   
-        ## all possible channel IDs
-        allchans = range(1,2241) 
-        # print out counter
-        cnt = 0
-        nruns = len(self.runs)
+  
+        
+        # if the table already present, check whether the run range needs to be updated
+        if os.path.exists(self.table_enchan_name):
+            print '...reading enabled channels from storage'
+            self.table_enchan = pd.read_csv(self.table_enchan_name)
+            trmin = self.table_enchan['RunNumber'].min()
+            trmax = self.table_enchan['RunNumber'].max()
+            print 'Run range: {0} - {1}'.format(trmin, trmax)
+
+            # expand if necessary
+            if self.run_min < trmin or self.run_max > trmax:
+
+                if self.run_min < trmin:
+                    print '...expanding for {0} - {1}'.format(self.run_min, trmin - 1)
+                    table = self.collect_channels(self.run_min, trmin - 1)
+                    self.table_enchan = pd.concat([table, self.table_enchan], ignore_index=True)
     
-        # collect enabled ordinary channels and their livetime in each run
-        print 'Collecting enabled channels in each run (will take a long while)...'
-        for r in self.runs:
-            if cnt % 50 == 0: print cnt, '/', nruns, 'runs'
-            # bug: run present in dst but not DisabledChannels
-            if not r in self.table_dis.index:
-                print 'Bug notice: run {0} present in DST but not in DisabledChannels'.format(r)
-                continue
+                if self.run_max > trmax:
+                    print '...expanding for {0} - {1}'.format(trmax + 1, self.run_max)
+                    table = self.collect_channels(trmax + 1, self.run_max)
+                    self.table_enchan = pd.concat([self.table_enchan, table], ignore_index=True)
 
-            # remove disabled channels in this run
-            dischans = self.table_dis.loc[r]
-            chans = np.setdiff1d(allchans,dischans)
-            # remove reference channels in this profile
-            p = profile(r)
-            refchans = self.table_ref.loc[p]
-            chans = np.setdiff1d(chans, refchans)
-            # temporary table for this run
-            df = pd.DataFrame({'ChannelID':chans})
-            df['RunNumber'] = r
-            # append temp. table to total table
-            self.table_enchan = pd.concat([self.table_enchan, df], ignore_index=True)
-            cnt += 1
-            # it seems that searching on a smaller table is faster, let's remove this run alltogether
-            self.table_dis = self.table_dis.drop(r, axis=0)
-            self.table_ref = self.table_ref.drop(r, axis=0)
+                print '...saving updated table'
+                self.table_enchan.to_csv(self.table_enchan_name, index=False)
+                print '-->', self.table_enchan_name
+            return
 
-        # save table            
+            # final range (shrink if needed)
+            self.table_enchan = self.talbe_enchan[self.table_enchan['RunNumber'] >= self.run_min]
+            self.table_enchan = self.talbe_enchan[self.table_enchan['RunNumber'] <= self.run_max]
+            print '--> {0} - {1}'.format(self.run_min, self.run_max)
+
+        ## if table not present, construct from scratch
+        self.table_enchan = self.collect_channels(self.run_min, self.run_max)
         self.table_enchan.to_csv(self.table_enchan_name, index=False)
         print '-->', self.table_enchan_name
 
 
+    def collect_channels(self, rmin, rmax):    
+        ''' Collect enabled channels for runs in a given range '''
+
+        # select requested subrange
+        runs = self.runs[self.runs >= rmin]
+        runs = runs[runs <= rmax]
+
+        # copy tables for quicker use
+        table_dis = self.table_dis.loc[rmin:rmax].copy()
+
+
+        # all possible channel IDs
+        allchans = range(1,2241) 
+        # print out counter
+        cnt = 0
+        nruns = len(runs)
+   
+        table = pd.DataFrame()
+
+        # collect enabled ordinary channels and their livetime in each run
+        print 'Collecting enabled channels in each run (will take a long while)...'
+        for r in runs:
+            if cnt % 50 == 0: print cnt, '/', nruns, 'runs'
+            # bug: run present in dst but not DisabledChannels
+            if not r in table_dis.index:
+                print 'Bug notice: run {0} present in DST but not in DisabledChannels'.format(r)
+                continue
+
+            # remove disabled channels in this run
+            dischans = table_dis.loc[r]
+            # remove reference channels in this profile
+            p = profile(r)
+            refchans = self.table_ref.loc[p]
+            dischans = dischans.append(refchans)
+            chans = np.setdiff1d(allchans,dischans)
+#            chans = np.setdiff1d(chans, refchans)
+            # temporary table for this run
+            df = pd.DataFrame({'ChannelID':chans})
+            df['RunNumber'] = r
+            # append temp. table to total table
+            table = pd.concat([self.table_enchan, df], ignore_index=True)
+            cnt += 1
+            # it seems that searching on a smaller table is faster, let's remove this run alltogether
+            table_dis = table_dis.drop(r, axis=0)
+
+        return table
+
+
     def map_to_PMT(self):       
         # if the table table_enchan is empty (i.e. we skipped this step)
-        # but the needed file does not exist, notify user
-        if (not os.path.exists(self.table_enchan_name)) and len(self.table_enchan) == 0:
-            print 'Table {0} does not exist. Do step 1: enabled channels in each run.'.format(self.table_enchan_name)
-            sys.exit(1)
+        if len(self.table_enchan) == 0:
+            
+            # but the needed file does not exist, notify user
+            if not os.path.exists(self.table_enchan_name):
+                print 'Table {0} does not exist. Do step 1: enabled channels in each run.'.format(self.table_enchan_name)
+                sys.exit(1)
 
-        # if empty table given, will read from storage
+            self.table_enchan = pd.read_csv(self.table_enchan_name)
+            print 'Run range: {0} - {1}'.format(self.table_enchan['RunNumber'].min(), self.table_enchan['RunNumber'].max())
+            self.table_enchan = self.talbe_enchan[self.table_enchan['RunNumber'] >= self.run_min]
+            self.table_enchan = self.talbe_enchan[self.table_enchan['RunNumber'] <= self.run_max]
+            print '--> {0} - {1}'.format(self.run_min, self.run_max)
+
+        # map to PMTs
         self.table_enpmt = map_pmts.map_lg_to_pmt(self.table_enchan_name, self.table_enchan)
 
 
@@ -144,6 +184,10 @@ class PMTinfo():
                 sys.exit(1)
             print 'Reading table {0} from storage...'.format(self.table_enpmt_name)
             self.table_enpmt = pd.read_csv(self.table_enpmt_name)
+            print 'Run range: {0} - {1}'.format(self.table_enpmt['RunNumber'].min(), self.table_enpmt['RunNumber'].max())
+            self.table_enpmt = self.talbe_enpmt[self.table_enpmt['RunNumber'] >= self.run_min]
+            self.table_enpmt = self.talbe_enpmt[self.table_enpmt['RunNumber'] <= self.run_max]
+            print '--> {0} - {1}'.format(self.run_min, self.run_max)
 
         print 'Obtaining top {0} PMTs by livetime...'.format(N)
         # channels that are not mapped to any PMT were marked as HoleLabel 0 -> remove
@@ -240,7 +284,11 @@ class PMTinfo():
         self.table_best_pmts.to_csv(outname, index=False)
         print '### FINAL ###'
         show_table(self.table_best_pmts)
-        print '-->', outname
+        print '-->', outname, ' (table with all the info)'
+        outname = outname.split('.')[0] + '.list'
+        self.table_best_pmts.sort_values('HoleLabel')['HoleLabel'].to_csv(outname, index=False, header=False)
+        print '-->', outname, ' (list of PMT labels)'
+
         print '#############'
 
 
@@ -282,33 +330,65 @@ class PMTinfo():
 
 
     def read_table(self, tname, query, dbname):    
-        ''' Read or create a table with given name.'''
+        '''
+            Get the requested table.
+
+            If exists on storage, will retreive saved file.
+            If run range in file is narrower than requested,
+                will expand the table with info from database
+                and save the result.
+            Otherwise will retreive full table from database.
+        ''' 
 
         # if the table already exists, read it
         if os.path.exists(tname):
             print '...reading table {0} from storage'.format(tname)
             table = pd.read_csv(tname)
+
             if 'RunNumber' in table:
                 trmin = table['RunNumber'].min()
                 trmax = table['RunNumber'].max()
                 print 'Run range: {0} - {1}'.format(trmin, trmax)
-                # if our range of runs is wider, read again (improvement: only read the missing parts and concatenate)
-                if (self.run_min < trmin or self.run_max > trmax):
-                    table = self.table_query(tname, query, dbname)
-                else:
-                    # shorten to our range of runs not to have too much info
-                    table = table[table['RunNumber'] >= self.run_min]
-                    table = table[table['RunNumber'] <= self.run_max]
-                    trmin = table['RunNumber'].min()
-                    trmax = table['RunNumber'].max()
-                    print '--> {0} - {1}'.format(trmin, trmax)
+
+                # if our run range is wider than the saved table
+                if self.run_min < trmin or self.run_max > trmax:
+   
+                    # if the table does not cover the min run, expand
+                    if self.run_min < trmin:
+                        print '...expanding to the range {0} - {1}'.format(self.run_min, trmin - 1)
+                        lquery = query.replace(str(self.run_max), str(trmin - 1))
+                        tleft = self.table_query(lquery, dbname)
+                        table = pd.concat([tleft, table], ignore_index=True)
+    
+                    # if the table does not cover the max run, expand
+                    if self.run_max > trmax:
+                        print '...expanding to the range {0} - {1}'.format(trmax + 1, self.run_max)
+                        rquery = query.replace(str(self.run_min), str(trmax + 1))
+                        tright = self.table_query(rquery, dbname)
+                        table = pd.concat([table, tright], ignore_index=True)
+                        
+                    print '...saving updated table'
+                    table.to_csv(tname, index=False)
+                    print '-->', tname
+
+                # shorten to our range of runs not to have too much info
+                table = table[table['RunNumber'] >= self.run_min]
+                table = table[table['RunNumber'] <= self.run_max]
+                trmin = table['RunNumber'].min()
+                trmax = table['RunNumber'].max()
+                print '--> {0} - {1}'.format(self.run_min, self.run_max)
+
         # if the table doesn't exist, create it
         else:
-            table = self.table_query(tname, query, dbname)
+            table = self.table_query(query, dbname)
+            print '...saving'
+            table.to_csv(tname, index=False)
+            print '-->', tname
+            
         return table
 
 
-    def table_query(self, tname, query, dbname):
+    def table_query(self, query, dbname):
         ''' Get table from database '''
         print '...reading from the database (may take a while)...'
         # connect to database
@@ -316,9 +396,6 @@ class PMTinfo():
         # read table with given query
         dat = sqlio.read_sql_query(query, conn)
         conn.close()
-        print '...saving.'
-        dat.to_csv(tname, index=False)
-        print '-->', tname
         return dat
 
 

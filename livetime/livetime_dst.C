@@ -38,7 +38,11 @@ int main(int argc, char* argv[]){
     ofstream out(fname.c_str());
     // header
     out << "RunNumber Livetime" << endl;
-    for(int bin=1; bin < nbins + 1; bin++) out << hlive->GetBinCenter(bin) << " " << hlive->GetBinContent(bin) << endl;
+    for(int bin=1; bin < nbins + 1; bin++){
+        float lt = hlive->GetBinContent(bin);
+        // save only runs with non-zero livetime
+        if(lt) out << hlive->GetBinCenter(bin) << " " << lt << endl;
+    }
     cout << "--> " << fname << endl << endl;
 
 }
