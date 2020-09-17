@@ -12,8 +12,9 @@ run_max = sys.argv[2]
 ## top N PMTs by livetime
 N = 1000
 ## top M PMTs by dark noise
-#M = 900
-M = 800
+M = 900
+
+print ' ~~~ Selecting {0} PMTs by dark noise out of {1} by livetime'.format(M, N)
 
 ###### -----------------------------------
 

@@ -199,8 +199,8 @@ class PMTinfo():
                 print 'Table {0} does not cover the requested run range. Do step 2: mapping channels to PMTs.'.format(self.table_enpmt_name)
                 sys.exit(1)
 
-            self.table_enpmt = self.talbe_enpmt[self.table_enpmt['RunNumber'] >= self.run_min]
-            self.table_enpmt = self.talbe_enpmt[self.table_enpmt['RunNumber'] <= self.run_max]
+            self.table_enpmt = self.table_enpmt[self.table_enpmt['RunNumber'] >= self.run_min]
+            self.table_enpmt = self.table_enpmt[self.table_enpmt['RunNumber'] <= self.run_max]
             print '--> {0} - {1}'.format(self.run_min, self.run_max)
 
         print 'Obtaining top {0} PMTs by livetime...'.format(N)

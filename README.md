@@ -20,7 +20,7 @@ Since the procedure might have to be run multiple times depending on the desired
 
 # Notes
 
-## Example 1
+## Example 1: different selection
 
 You have done a selection of top 900 PMTs by dark noise out of the top 1000 by livetime in the run range 5007 - 10137.
 Now you want to select top 800 PMTs instead.
@@ -41,10 +41,22 @@ python2 pmt_selection.py 5007 10137
 
 since step 0 contained in ```pmt_selection.sh``` is not needed anyway.
 
-## Example 2
+## Example 2: shrink range
 
 You have done a selection of top 900 PMTs by dark noise out of the top 1000 by livetime in the run range 5007 - 10137.
 Now you want to change the run range of your selection to 6587 - 12035.
+
+You can skip steps 1 and 2, since the new range is contained within the old, and the information about enabled PMTs would be the same.
+
+Starting from step 3, you have to leave the steps uncommented. They will subselect the given range from the previously saved larger range info and redo the rest of the calculations.
+
+Be careful in this example, if you comment out more than needed, the code will not notify you and will use wrong average dark noise information from the previous larger run range
+
+
+## Example 3: expand range
+
+You have done a selection of top 900 PMTs by dark noise out of the top 1000 by livetime in the run range 6587 - 10137.
+Now you want to change the run range of your selection to 5007 - 12035.
 
 You have to redo the whole procedure, not commenting out anything. However, as you will see, some time will be saved as the table calculated in the previous run range will not all be read from scratch but rather expanded to cover the new range. 
 
