@@ -3,7 +3,7 @@
 Main command
 
 ```console
-./pmt_selection run_min run_max
+./pmt_selection.sh run_min run_max
 ```
 
 The procedure consists of the following steps:
@@ -17,6 +17,36 @@ The procedure consists of the following steps:
 
 The numbers N and M are defined on top of the file ```pmt_selection.py```.
 Since the procedure might have to be run multiple times depending on the desired run range and the parameters N and M, each step can be commented out if it was already done before to speed up the procedure. Be careful about files being overwritten or the opposite, not replaced if you are re-running the procedure. See details below.
+
+# Notes
+
+## Example 1
+
+You have done a selection of top 900 PMTs by dark noise out of the top 1000 by livetime in the run range 5007 - 10137.
+Now you want to select top 800 PMTs instead.
+
+You can comment out steps 0 (in ```pmt_selection.sh```), 1, 2, 3 and 4 (in ```pmt_selection.py```), since they are common for any final selection and it will save a GREAT deal of time, leaving only step 5 uncommented. Then, in ```pmt_selection.py``` assign the number 800 to the variable M on top of the code.
+
+Then re-run
+
+```console
+./pmt_selection.sh 5007 10137
+```
+
+or
+
+```console
+python2 pmt_selection.py 5007 10137
+```
+
+since step 0 contained in ```pmt_selection.sh``` is not needed anyway.
+
+## Example 2
+
+You have done a selection of top 900 PMTs by dark noise out of the top 1000 by livetime in the run range 5007 - 10137.
+Now you want to change the run range of your selection to 6587 - 12035.
+
+You have to redo the whole procedure, not commenting out anything. However, as you will see, some time will be saved as the table calculated in the previous run range will not all be read from scratch but rather expanded to cover the new range. 
 
 
 # Procedure
@@ -43,6 +73,8 @@ It reads the DST ROOT files from the list saved before, and extracts the livetim
 Afterwards, python script ```pmt_selection.py``` is called from the main script ```pmt_selection.sh```.
 This step can be done once for given run_min and run_max and commented out (skipped) if re-running is needed to save time.
 
+Note: livetime is saved into a file that has min and max run in its name. The following step will look for a file with that specific name. If you want to extend your range, the procedure has to be run again to create a new file. If you always work with the same run range, this step can be done once and commented out.
+
 ## Step 1: obtain list of enabled channels in each run
 
 The first step is contained in the method ```enabled_channels()``` of the class ```PMTinfo``` (see ```pmt_info.py```). The method is called from ```pmt_selection.py```. The method uses three sources of information:
@@ -54,30 +86,39 @@ The first step is contained in the method ```enabled_channels()``` of the class 
 
 For each run present in the livetime file (enabled runs present in DSTs between run_min and run_max), enabled channels are obtained by subtracting disabled and reference channels from all channels. Enabled channels of each run are saved to ```livetime/live_channels_run.csv```.
 
-## Step 2: select top N PMTs by livetime
-
-# Details
-
-File channel_livetime.py reads
-1) ```livetime_run.csv```
-2) ```DisabledChannels.csv```
-3) ```LabenChannelMapping.csv```
-
-And produces a file called  ```livetime_run_channels.csv```
+If a file with such a name is already present, the procedure will first look for it and check if the current run range is contained within the file. In that case, it will simply read it and truncate to the given runs to save time. If the given range is wider, it will do the procedure for the missing runs and update the saved file for the future to save time.
 
 
-1) Table ```livetime_run.csv``` was obtained from the file given to me by Sindhu. She produced a file with livetime (in seconds) for each run for some of her studies. This livetime already accounts for deadtime after the muon cut. As I understand, this information can be extracted from dsts, which contain histograms livetime VS run.
+## Step 2: map channels to PMTs
 
-2) File ```DisabledChannels.csv``` is obtained from the table ```DisabledChannels``` in the database ```bx_calib``` using a script ```get_table.sh``` with
+The second step is contained in the method ```map_to_PMT()``` of the class ```PMTinfo``` (see ```pmt_info.py```). It calls the function ```map_lg_to_pmt()``` from ````hole_mapping/map_pmts.py``` giving it as input the result of the previous step. This function uses files present in ```hole_mapping/``` to obtain the mapping profile of each run and assign PMT label to each channel in that run. The resulting table with added PMT info is saved to ```livetime/live_channels_runHoleLabel.csv```.
 
-```bash
-name="DisabledChannels"
-query="select \"RunNumber\", \"ChannelID\" from \"$name\" ....."
-```
+In case the previous step was skipped, the method reads the file ```livetime/live_channels_run.csv``` and selects the needed run range (if the read one is larger). In case the file does not cover the requested run range, the procedure will stop and ask the user to produce the file with the correct run range.
 
-3) File ```LabenChannelMapping.csv``` is obtained from the table ??? in the database ??? using a script ```get_table.sh``` with
 
-```bash
-name="LabenChannelMapping"
-query="select * from \"$name\" where \"ProfileID\" > 14"
-```
+## Step 3: select top N PMTs by livetime
+
+The third step is contained in the method ```best_N_livetime(N)``` of the class ```PMTinfo``` (see ```pmt_info.py```). It takes as a variable ```N```, the number of PMTs in the selection. The method uses the table produced in the previous step and the livetime information to order PMTs by total livetime in the run range and select top N.
+
+If the previous step was skipped, the method reads the file ```livetime/live_channels_runHoleLabel.csv``` and selects the needed run range (if the read one is larger). In case the file does not cover the requested run range, the procedure will stop and ask the user to produce the file with the correct run range.
+
+The result is saved to the file ```livetime/top<N>pmts_livetime_runs<run_min>-<run_max>.csv```
+
+
+## Step 4: obtain average dark noise in PMTs
+
+The fourth step is contained in the method ```avg_dark()``` of the class ```PMTinfo``` (see ```pmt_info.py```). It reads the information about dark noise rate in each channel in the given run range from the database, maps channels to PMTs, and calculates average dark noise in each PMT in that run range.
+The result is saved to ```dark_noise/DarkNoiseAverage.csv``` along with the intermediate steps.
+
+
+## Step 5: select top M PMTs by dark noise
+
+The fifth and final step is contained in the method ```best_M_darknoise(M)``` of the class ```PMTinfo``` (see ```pmt_info.py```). It takes as a variable ```M```, the number of PMTs in the selection. The method uses the table produced in step 3 and the dark noise information produced in step 4 to order PMTs by average dark noise rate in the run range and select top M.
+
+In case steps 3 or 4 were skipped, the tables are read from storage. If they do not exist, the user will be prompted to do steps 3 and 4.
+
+The final output are two files:
+
+- ```top<N>pmts_livetime_runs<run_min>-<run_max>_top<M>darknoise.csv```: table with all the information (livetime, dark noise etc)
+- ```top<N>pmts_livetime_runs<run_min>-<run_max>_top<M>darknoise.list```: list of the selected PMT labels (hole labels) 
+

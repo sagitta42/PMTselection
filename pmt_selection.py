@@ -12,7 +12,8 @@ run_max = sys.argv[2]
 ## top N PMTs by livetime
 N = 1000
 ## top M PMTs by dark noise
-M = 900
+#M = 900
+M = 800
 
 ###### -----------------------------------
 
@@ -28,7 +29,7 @@ print 'Step 1: Enabled channels in each run'
 print '#######################################\n'
 
 ## [!] comment out the following line if you want to skip this step (if already done)
-#PMT_info.enabled_channels()
+PMT_info.enabled_channels()
 # be careful about this step, if it's not up to date with your current run_min and run_max, the next steps will produce wrong results or possibly crash
 ## produces file livetime/live_channels_run.csv
 

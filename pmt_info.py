@@ -112,7 +112,7 @@ class PMTinfo():
         runs = self.runs[self.runs >= rmin]
         runs = runs[runs <= rmax]
 
-        # copy tables for quicker use
+        # copy table for quicker use
         table_dis = self.table_dis.loc[rmin:rmax].copy()
 
 
@@ -145,7 +145,7 @@ class PMTinfo():
             df = pd.DataFrame({'ChannelID':chans})
             df['RunNumber'] = r
             # append temp. table to total table
-            table = pd.concat([self.table_enchan, df], ignore_index=True)
+            table = pd.concat([table, df], ignore_index=True)
             cnt += 1
             # it seems that searching on a smaller table is faster, let's remove this run alltogether
             table_dis = table_dis.drop(r, axis=0)
@@ -163,10 +163,17 @@ class PMTinfo():
                 sys.exit(1)
 
             self.table_enchan = pd.read_csv(self.table_enchan_name)
-            print 'Run range: {0} - {1}'.format(self.table_enchan['RunNumber'].min(), self.table_enchan['RunNumber'].max())
-            self.table_enchan = self.talbe_enchan[self.table_enchan['RunNumber'] >= self.run_min]
-            self.table_enchan = self.talbe_enchan[self.table_enchan['RunNumber'] <= self.run_max]
-            print '--> {0} - {1}'.format(self.run_min, self.run_max)
+            trmin = self.table_enchan['RunNumber'].min()
+            trmax = self.table_enchan['RunNumber'].max()
+            print 'Run range: {0} - {1}'.format(trmin, trmax)
+            if self.run_min < trmin or self.run_max > trmax:
+                print 'Table {0} does not cover the requested run range. Do step 1: enabled channels in each run.'.format(self.table_enchan_name)
+                sys.exit(1)
+
+            # do not truncate on this level, save full info to not have clashes (enabled chan one range, hole label another)
+#            self.table_enchan = self.talbe_enchan[self.table_enchan['RunNumber'] >= self.run_min]
+#            self.table_enchan = self.talbe_enchan[self.table_enchan['RunNumber'] <= self.run_max]
+#            print '--> {0} - {1}'.format(self.run_min, self.run_max)
 
         # map to PMTs
         self.table_enpmt = map_pmts.map_lg_to_pmt(self.table_enchan_name, self.table_enchan)
@@ -184,7 +191,14 @@ class PMTinfo():
                 sys.exit(1)
             print 'Reading table {0} from storage...'.format(self.table_enpmt_name)
             self.table_enpmt = pd.read_csv(self.table_enpmt_name)
-            print 'Run range: {0} - {1}'.format(self.table_enpmt['RunNumber'].min(), self.table_enpmt['RunNumber'].max())
+            trmin = self.table_enpmt['RunNumber'].min()
+            trmax = self.table_enpmt['RunNumber'].max()
+            print 'Run range: {0} - {1}'.format(trmin, trmax)
+
+            if self.run_min < trmin or self.run_max > trmax:
+                print 'Table {0} does not cover the requested run range. Do step 2: mapping channels to PMTs.'.format(self.table_enpmt_name)
+                sys.exit(1)
+
             self.table_enpmt = self.talbe_enpmt[self.table_enpmt['RunNumber'] >= self.run_min]
             self.table_enpmt = self.talbe_enpmt[self.table_enpmt['RunNumber'] <= self.run_max]
             print '--> {0} - {1}'.format(self.run_min, self.run_max)
@@ -223,21 +237,25 @@ class PMTinfo():
         ''' Obtain average dark noise in each PMT'''
         ## get dark noise info
         tname = "dark_noise/DarkNoise.csv"
-        query = 'select * from "InnerPmtsDarkRate" where "RunNumber" <={0}  and "RunNumber" >= {1} order by "RunNumber", "ChannelID"'.format(self.run_max, self.run_min)
+        query = 'select * from "InnerPmtsDarkRate" where "RunNumber" >= {0}  and "RunNumber" <= {1} order by "RunNumber", "ChannelID"'.format(self.run_min, self.run_max)
         print 'Obtaining average dark noise...'
         # will read from storage if already exists
         print '...getting dark noise info...'
+        if not os.path.exists('dark_noise'): os.mkdir('dark_noise')
         table_dark = self.read_table(tname, query, "bx_calib")
         # remove dead channel entires
         table_dark = table_dark[table_dark['DarkSigma'] > 0]
+        show_table(table_dark)
         # map to PMTs (will also save to file)
         print '...mapping channels to PMTs...'
         table_dark = map_pmts.map_lg_to_pmt(tname, table_dark)
+        show_table(table_dark)
         # remove HoleLabel 0 (channels that are not mapped to PMTs)
         table_dark = table_dark[table_dark['HoleLabel'] != 0]
         # calculate average
         print '...obtaining average dark noise.'
         self.table_dark_avg = table_dark.groupby('HoleLabel').mean()[['DarkNoise']]
+        show_table(self.table_dark_avg)
         # save
         self.table_dark_avg.to_csv(self.table_dark_avg_name, index=True)
         print '-->', self.table_dark_avg_name
@@ -278,7 +296,9 @@ class PMTinfo():
         ## sort by dark noise
         self.table_best_pmts = self.table_best_pmts.sort_values('DarkNoise')
         self.table_best_pmts = self.table_best_pmts.iloc[:M]
-        outname = best_pmts_name.split('.')[0].split('/')[-1] + '_top{0}darknoise.csv'.format(M)
+        outfolder = 'final_selection/'
+        if not os.path.exists(outfolder): os.mkdir(outfolder)
+        outname = outfolder + best_pmts_name.split('.')[0].split('/')[-1] + '_top{0}darknoise.csv'.format(M)
         # order the columns as wanted
         self.table_best_pmts = self.table_best_pmts[['HoleLabel', 'DarkNoise', 'LivetimeRelative', 'Livetime']]
         self.table_best_pmts.to_csv(outname, index=False)
@@ -374,8 +394,8 @@ class PMTinfo():
                 # shorten to our range of runs not to have too much info
                 table = table[table['RunNumber'] >= self.run_min]
                 table = table[table['RunNumber'] <= self.run_max]
-                trmin = table['RunNumber'].min()
-                trmax = table['RunNumber'].max()
+#                trmin = table['RunNumber'].min()
+#                trmax = table['RunNumber'].max()
                 print '--> {0} - {1}'.format(self.run_min, self.run_max)
 
         # if the table doesn't exist, create it

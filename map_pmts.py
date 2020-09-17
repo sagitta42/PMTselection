@@ -39,6 +39,7 @@ def map_lg_to_pmt(name, df=pd.DataFrame()):
         df.at[dfp.loc[p] : dfp.loc[p+1]-1, 'ProfileID'] = p
     # profile 25
     df.at[dfp.loc[25]:, 'ProfileID'] = 25
+    print '25'
 
     ### hole labels
     print 'Mapping hole labels...'
@@ -54,7 +55,7 @@ def map_lg_to_pmt(name, df=pd.DataFrame()):
     for p in profiles:
         print p
         # channels in our table in a given profile
-        channels = list(df.loc[p]['ChannelID'].unique())
+        channels = list(df.loc[p]['ChannelID'].astype(int).unique())
         # corresponding PMTs
         pmts = dfh.loc[(p,channels),'HoleLabel']
         # add missing channels
